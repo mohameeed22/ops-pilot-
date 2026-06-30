@@ -1,0 +1,38 @@
+# Python and general development ignores
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+*.dist-info/
+*.log
+.env
+.env.*
+venv/
+.venv/
+# VS Code settings
+.vscode/
+# macOS
+.DS_Store
+# Windows
+Thumbs.db
+# Docker
+*.dockerignore
+Dockerfile
+# PyCharm
+.idea/
+# IDEs
+*.iml
+# Poetry
+poetry.lock
+# pipenv
+Pipfile.lock
+# pytest cache
+.pytest_cache/
+# mypy cache
+.mypy_cache/
+# coverage
+htmlcov/
+.coverage
+coverage.xml
+# Jupyter
+.ipynb_checkpoints/

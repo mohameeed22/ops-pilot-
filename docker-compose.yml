@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: devops_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    networks:
+      - devops_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: devops_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - devops_network
+
+  db:
+    image: postgres:15-alpine
+    container_name: devops_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: devops_password
+      POSTGRES_DB: devops_autopilot
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - devops_network
+
+volumes:
+  db_data:
+  redis_data:
+
+networks:
+  devops_network:
+    driver: bridge
