@@ -153,7 +153,12 @@ class NotificationService:
                 logger.error(f"Failed to send Discord notification: {e}")
 
     async def notify_all(self, repo_name: str, run_id: int, status: str, error_details: dict | None) -> None:
-        await self.send_slack_notification(repo_name, run_id, status, error_details)
-        await self.send_discord_notification(repo_name, run_id, status, error_details)
+        import asyncio
+        await asyncio.gather(
+            self.send_slack_notification(repo_name, run_id, status, error_details),
+            self.send_discord_notification(repo_name, run_id, status, error_details),
+            return_exceptions=True,
+        )
+
 
 notifier = NotificationService()

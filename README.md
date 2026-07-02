@@ -1,87 +1,148 @@
 # Ops‑Pilot
 
-A **Python‑powered DevOps autopilot** that automates common CI/CD, infrastructure, and monitoring tasks.  The project started as a proof‑of‑concept for an AI‑driven DevOps assistant (see the original design discussion in the repository).
+> **AI‑powered DevOps autopilot** – automatically detects CI/CD failures, scrapes GitHub Actions logs, summarises incidents with an LLM, and notifies your team via Slack or Discord.
 
-## ✨ Features
-
-- **GitHub webhook handling** – receive push events, PR events, etc.
-- **Config‑driven pipelines** – define steps in `backend/app/core/config.py`.
-- **Docker‑compose orchestration** – spin up services locally with `docker-compose.yml`.
-- **Extensible services** – add new automation modules under `backend/app/services/`.
-
-## 📦 Installation
-
-1. **Clone the repo** (if you haven’t already):
-
-   ```bash
-   git clone https://github.com/mohameeed22/ops-pilot-.git
-   cd ops-pilot-
-   ```
-
-2. **Create a virtual environment** (recommended):
-
-   ```bash
-   python -m venv .venv
-   .\.venv\Scripts\activate   # PowerShell
-   # or
-   .\.venv\Scripts\activate.bat   # cmd
-   ```
-
-3. **Install dependencies**:
-
-   ```bash
-   pip install -r backend/requirements.txt
-   ```
-
-4. **Configure environment variables**
-   Copy the example file and edit as needed:
-
-   ```bash
-   copy .env.example .env
-   # edit .env (GitHub secret, webhook secret, etc.)
-   ```
-
-## 🚀 Usage
-
-Run the FastAPI application locally:
-
-```bash
-uvicorn backend.app.main:app --reload
-```
-
-The API will be available at **http://127.0.0.1:8000**.
-Visit **http://127.0.0.1:8000/docs** for the interactive OpenAPI UI.
-
-### Docker
-
-You can also launch the whole stack with Docker Compose:
-
-```bash
-docker-compose up -d
-```
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository.
-2. Create a feature branch:
-
-   ```bash
-   git checkout -b feat/your-feature
-   ```
-3. Make your changes and ensure tests (if any) pass.
-4. Commit with a clear message and push:
-
-   ```bash
-   git push origin feat/your-feature
-   ```
-5. Open a Pull Request on GitHub.
-
-## 📜 License
-
-This project is licensed under the **MIT License** – see the `LICENSE` file for details.
+[![CI](https://github.com/mohameeed22/ops-pilot-/actions/workflows/ci.yml/badge.svg)](https://github.com/mohameeed22/ops-pilot-/actions/workflows/ci.yml)
 
 ---
 
-*Happy automating!* 🎉
+## ✨ Features
+
+| Feature | Details |
+|---------|---------|
+| **GitHub Webhook handling** | Receives push, PR, and `workflow_run` events with HMAC-SHA256 signature verification and replay-attack protection |
+| **CI failure detection** | Detects failed workflow runs and queues a log-scraping job automatically |
+| **Log parsing** | Downloads and parses GitHub Actions log archives to extract error type, file, line number, and traceback |
+| **LLM incident summaries** | Generates a concise 2–3 sentence AI-written incident summary via OpenAI |
+| **Parallel notifications** | Posts rich embedded alerts to Slack and Discord simultaneously |
+| **Retry + dead-letter queue** | Automatic retries with exponential back-off; permanently failed jobs go to a dead-letter Redis list |
+| **Audit log** | Every webhook and worker action is recorded in a PostgreSQL `audit_events` table |
+| **REST API** | Paginated `/runs`, `/stats`, `/audit` endpoints protected by API key auth |
+| **Prometheus metrics** | `/metrics` endpoint scraped by the bundled Prometheus container |
+| **Readiness probe** | `/ready` checks DB + Redis connectivity |
+| **React Dashboard** | Full-featured dark-mode UI with stats, charts, run table, run detail, audit log, and health page |
+| **Docker Compose** | One-command local stack: API + Worker + DB + Redis + Frontend + Prometheus |
+| **GitHub Actions CI** | Lints, type-checks, and builds Docker images on every PR |
+
+---
+
+## 🏗️ Architecture
+
+```
+GitHub  ──POST──▶  FastAPI /api/v1/webhooks
+                        │
+                   ┌────▼────┐
+                   │  Redis  │  (job queue + nonce store)
+                   └────┬────┘
+                        │
+                   ┌────▼────┐
+                   │ Worker  │  (pulls jobs, parses logs, calls LLM)
+                   └────┬────┘
+                        │
+            ┌───────────┴───────────┐
+            ▼                       ▼
+       PostgreSQL             Slack / Discord
+      (pipeline_runs,         notifications
+       audit_events,
+       api_keys)
+            ▲
+            │
+     React Dashboard
+    (port 5173 / 3000)
+```
+
+---
+
+## 📦 Installation
+
+### Prerequisites
+- Docker Desktop (recommended) **or** Python 3.11+ and Node 20+
+- A GitHub App (or Personal Access Token) with `actions:read` permission
+- A GitHub webhook configured to send `workflow_run` events
+
+### Docker Compose (recommended)
+
+```bash
+# 1. Clone
+git clone https://github.com/mohameeed22/ops-pilot-.git
+cd ops-pilot-
+
+# 2. Configure environment
+copy .env.example .env
+notepad .env   # fill in GITHUB_APP_ID, GITHUB_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET, SEED_API_KEY
+
+# 3. Start everything
+docker-compose up -d
+
+# 4. Verify
+curl http://localhost:8000/health
+# → {"status":"healthy","project":"AI DevOps Autopilot","debug_mode":true}
+```
+
+**Services exposed:**
+| Service | URL |
+|---------|-----|
+| FastAPI API | http://localhost:8000 |
+| Interactive API Docs | http://localhost:8000/api/v1/docs |
+| React Dashboard | http://localhost:3000 |
+| Prometheus | http://localhost:9090 |
+
+### Local development (without Docker)
+
+```powershell
+# Backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r backend\requirements.txt
+uvicorn backend.app.main:app --reload
+
+# Frontend (separate terminal)
+cd frontend
+npm install
+npm run dev          # → http://localhost:5173
+```
+
+---
+
+## 🔑 API Key Setup
+
+The dashboard uses `X-API-Key` header authentication.
+
+1. Set `SEED_API_KEY=mysecretkey` in your `.env`.
+2. On first startup, the API auto-creates this key in the database.
+3. Set the same value in `frontend/.env` as `VITE_API_KEY=mysecretkey`.
+
+---
+
+## 📡 Sending a Test Webhook
+
+```powershell
+$payload = @{
+    action = "completed"
+    repository = @{ full_name = "myorg/myrepo" }
+    workflow_run = @{
+        id = 123456; html_url = "https://github.com/..."; conclusion = "failure"
+        head_branch = "main"; head_sha = "deadbeefcafe1234567890abcdef1234567890ab"
+        name = "CI Pipeline"
+    }
+    installation = @{ id = 99999 }
+} | ConvertTo-Json -Depth 5
+
+Invoke-RestMethod -Uri http://localhost:8000/api/v1/webhooks `
+    -Method Post -Body $payload -ContentType "application/json" `
+    -Headers @{ "X-GitHub-Event" = "workflow_run"; "X-GitHub-Delivery" = [guid]::NewGuid().ToString() }
+```
+
+---
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
+
+## 📜 License
+
+MIT License – see `LICENSE` for details.
+
+---
+
+*Happy automating! 🎉*

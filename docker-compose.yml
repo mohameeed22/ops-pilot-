@@ -35,6 +35,18 @@ services:
     networks:
       - devops_network
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: devops_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - devops_network
+
   redis:
     image: redis:7-alpine
     container_name: devops_redis
@@ -56,6 +68,16 @@ services:
       POSTGRES_DB: devops_autopilot
     volumes:
       - db_data:/var/lib/postgresql/data
+    networks:
+      - devops_network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: devops_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     networks:
       - devops_network
 

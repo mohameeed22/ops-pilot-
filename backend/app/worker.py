@@ -1,14 +1,17 @@
 import asyncio
 import logging
+import signal
 import sys
 from sqlalchemy.future import select
 from app.core.database import async_session
 from app.models.pipeline import PipelineRun
+from app.models.audit_event import AuditEvent
 from app.services.queue import redis_queue
 from app.services.pipeline import pipeline_coordinator
 from app.services.notifications import notifier
+from app.services.llm import llm_service
 
-# Configure logging to stdout
+# Configure structured logging to stdout
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -18,20 +21,51 @@ logger = logging.getLogger("worker")
 
 QUEUE_NAME = "devops_pipeline_queue"
 
+# Graceful shutdown flag
+_shutdown_requested = False
+
+
+def _handle_sigterm(signum, frame):
+    global _shutdown_requested
+    logger.info("SIGTERM received – finishing current task then shutting down...")
+    _shutdown_requested = True
+
+
+async def _write_audit(event_type: str, resource_id: str | None, detail: str) -> None:
+    """Best-effort audit log write from worker."""
+    try:
+        async with async_session() as db:
+            async with db.begin():
+                db.add(AuditEvent(
+                    event_type=event_type,
+                    actor="worker",
+                    resource_id=resource_id,
+                    detail=detail,
+                ))
+    except Exception as exc:
+        logger.error(f"Worker audit write failed: {exc}")
+
+
 async def process_task(payload: dict):
     repo_name = payload.get("repo_name")
     run_id = payload.get("run_id")
     installation_id = payload.get("installation_id")
+    branch = payload.get("branch")
+    commit_sha = payload.get("commit_sha")
 
     if not all([repo_name, run_id, installation_id]):
         logger.error(f"Invalid task payload received: {payload}")
         return
 
     logger.info(f"Processing task for run {run_id} in repository {repo_name}...")
+    await _write_audit("worker.task.started", str(run_id), f"repo={repo_name} branch={branch}")
+
+    db_run = None
+    error_details = None
 
     try:
         async with async_session() as db:
-            # Check if PipelineRun already exists in DB
+            # Mark as processing
             async with db.begin():
                 stmt = select(PipelineRun).where(PipelineRun.run_id == run_id)
                 result = await db.execute(stmt)
@@ -42,20 +76,28 @@ async def process_task(payload: dict):
                         repo_name=repo_name,
                         run_id=run_id,
                         installation_id=installation_id,
-                        status="processing"
+                        status="processing",
+                        branch=branch,
+                        commit_sha=commit_sha,
+                        run_url=payload.get("run_url"),
+                        workflow_name=payload.get("workflow_name"),
                     )
                     db.add(db_run)
                 else:
                     db_run.status = "processing"
-                
+
                 await db.commit()
 
-            # Run the pipeline processing (downloads, parses logs)
-            # Note: pipeline_coordinator.process_failed_run handles its own exceptions internally
+            # Run the pipeline
             parsed_result = await pipeline_coordinator.process_failed_run(repo_name, run_id, installation_id)
 
+            # --- LLM summarization ---
+            llm_summary = None
+            if parsed_result and "error" not in parsed_result:
+                enriched = {**parsed_result, "repo_name": repo_name}
+                llm_summary = await llm_service.summarize_failure(enriched)
+
             async with db.begin():
-                # Reload db_run
                 stmt = select(PipelineRun).where(PipelineRun.run_id == run_id)
                 result = await db.execute(stmt)
                 db_run = result.scalar_one_or_none()
@@ -66,7 +108,6 @@ async def process_task(payload: dict):
 
                 if not parsed_result or "error" in parsed_result:
                     db_run.status = "failed"
-                    # If we couldn't parse logs, we store the detail in traceback or msg
                     db_run.error_message = parsed_result.get("detail") if parsed_result else "Unknown pipeline error"
                     db_run.error_type = parsed_result.get("error") if parsed_result else "PipelineError"
                     error_details = None
@@ -79,25 +120,34 @@ async def process_task(payload: dict):
                     db_run.error_message = parsed_result.get("error_message")
                     db_run.error_traceback = parsed_result.get("traceback")
                     db_run.step_log_file = parsed_result.get("step_log_file")
+                    db_run.llm_summary = llm_summary
                     error_details = parsed_result
 
                 await db.commit()
                 logger.info(f"Database updated for run {run_id}. Status: {db_run.status}")
 
-        # Send external notifications (Slack/Discord Webhooks)
+        await _write_audit(
+            f"worker.task.{db_run.status if db_run else 'unknown'}",
+            str(run_id),
+            f"repo={repo_name}"
+        )
+
+        # Send notifications
         try:
-            await notifier.notify_all(repo_name, run_id, db_run.status, error_details)
+            await notifier.notify_all(repo_name, run_id, db_run.status if db_run else "unknown", error_details)
         except Exception as e:
             logger.error(f"Failed to send external notifications for run {run_id}: {e}")
 
     except Exception as e:
         logger.error(f"Error handling task for run {run_id}: {e}", exc_info=True)
+        await _write_audit("worker.task.error", str(run_id), str(e))
+
 
 async def main():
     logger.info("Starting Ops-Pilot Background Worker...")
-    
-    # Simple loop to fetch tasks from Redis
-    while True:
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+
+    while not _shutdown_requested:
         try:
             task = await redis_queue.pop_task(QUEUE_NAME, timeout=5)
             if task:
@@ -109,7 +159,9 @@ async def main():
             logger.error(f"Error in worker main loop: {e}")
             await asyncio.sleep(2)  # Avoid tight spinning on consecutive exceptions
 
+    logger.info("Worker shutdown complete.")
     await redis_queue.close()
+
 
 if __name__ == "__main__":
     try:
