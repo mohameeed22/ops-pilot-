@@ -18,6 +18,23 @@ services:
     networks:
       - devops_network
 
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: devops_worker
+    command: python -m app.worker
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+      - backend
+    networks:
+      - devops_network
+
   redis:
     image: redis:7-alpine
     container_name: devops_redis
