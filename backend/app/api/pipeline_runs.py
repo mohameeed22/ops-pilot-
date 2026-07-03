@@ -6,7 +6,7 @@ Endpoints:
   GET /api/v1/runs/{run_id}  - single run detail
 """
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from app.core.database import async_session
 from app.api.auth import get_current_user, User
