@@ -1,5 +1,4 @@
 import logging
-import hashlib
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +8,7 @@ from app.api.webhooks import router as webhooks_router
 from app.api.pipeline_runs import router as runs_router
 from app.api.stats import router as stats_router
 from app.api.audit import router as audit_router
+from app.api.auth import router as auth_router
 from app.core.database import Base, engine, async_session
 from app.services.queue import redis_queue
 
@@ -114,7 +114,6 @@ async def readiness_check():
 
 
 # ── API Routers ───────────────────────────────────────────────────────────────
-from app.api.auth import router as auth_router
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(webhooks_router, prefix=settings.API_V1_STR)
 app.include_router(runs_router, prefix=settings.API_V1_STR)

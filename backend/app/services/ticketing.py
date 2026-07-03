@@ -91,20 +91,20 @@ class JiraService:
         run_url: str | None,
     ) -> str:
         parts = [
-            f"CI pipeline failure detected by Ops-Pilot.",
-            f"",
+            "CI pipeline failure detected by Ops-Pilot.",
+            "",
             f"Repository: {repo_name}",
             f"Branch: {branch}",
             f"GitHub Actions Run: {run_url or 'N/A'} (#{run_id})",
-            f"",
-            f"--- Error Details ---",
+            "",
+            "--- Error Details ---",
             f"Type: {error_type or 'Unknown'}",
             f"Message: {error_message or 'No details available'}",
         ]
         if llm_summary:
             parts += [
-                f"",
-                f"--- AI Incident Summary ---",
+                "",
+                "--- AI Incident Summary ---",
                 llm_summary,
             ]
         parts += ["", "Created automatically by Ops-Pilot."]

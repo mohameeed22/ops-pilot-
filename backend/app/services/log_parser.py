@@ -1,5 +1,4 @@
 import re
-import os
 import logging
 
 logger = logging.getLogger("log_parser")

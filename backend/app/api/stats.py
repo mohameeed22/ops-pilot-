@@ -4,7 +4,7 @@ Stats API – aggregate counts and recent trend for the dashboard.
 import logging
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select, case
+from sqlalchemy import func, select
 from app.core.database import async_session
 from app.api.auth import get_current_user, User
 from app.models.pipeline import PipelineRun

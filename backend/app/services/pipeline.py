@@ -1,7 +1,7 @@
 import io
 import zipfile
 import logging
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from app.services.github_app import github_app_service
 from app.services.log_parser import parse_log_text
 from app.services.queue import redis_queue
