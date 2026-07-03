@@ -10,6 +10,7 @@ from app.services.queue import redis_queue
 from app.services.pipeline import pipeline_coordinator
 from app.services.notifications import notifier
 from app.services.llm import llm_service
+from app.services.ticketing import jira_service
 
 # Configure structured logging to stdout
 logging.basicConfig(
@@ -52,6 +53,7 @@ async def process_task(payload: dict):
     installation_id = payload.get("installation_id")
     branch = payload.get("branch")
     commit_sha = payload.get("commit_sha")
+    pr_number = payload.get("pr_number")
 
     if not all([repo_name, run_id, installation_id]):
         logger.error(f"Invalid task payload received: {payload}")
@@ -123,6 +125,30 @@ async def process_task(payload: dict):
                     db_run.llm_summary = llm_summary
                     error_details = parsed_result
 
+                    # Flaky Test Tracking
+                    if db_run.error_filename and db_run.error_type:
+                        sig = f"{db_run.error_filename}:{db_run.error_line_number}:{db_run.error_type}"
+                        from app.models.flaky_test import FlakyTest
+                        # Find existing signature
+                        stmt_flaky = select(FlakyTest).where(FlakyTest.error_signature == sig)
+                        res_flaky = await db.execute(stmt_flaky)
+                        flaky_record = res_flaky.scalar_one_or_none()
+                        if not flaky_record:
+                            flaky_record = FlakyTest(
+                                repo_name=repo_name,
+                                workflow_name=db_run.workflow_name or "unknown",
+                                error_signature=sig,
+                                failure_count=1,
+                                success_count=0,
+                                is_flaky=False
+                            )
+                            db.add(flaky_record)
+                        else:
+                            flaky_record.failure_count += 1
+                            if flaky_record.success_count > 0:
+                                flaky_record.is_flaky = True
+                                db_run.is_flaky = True
+
                 await db.commit()
                 logger.info(f"Database updated for run {run_id}. Status: {db_run.status}")
 
@@ -134,9 +160,24 @@ async def process_task(payload: dict):
 
         # Send notifications
         try:
-            await notifier.notify_all(repo_name, run_id, db_run.status if db_run else "unknown", error_details)
+            await notifier.notify_all(repo_name, run_id, db_run.status if db_run else "unknown", error_details, installation_id, pr_number)
         except Exception as e:
             logger.error(f"Failed to send external notifications for run {run_id}: {e}")
+
+        # Ticketing (Jira)
+        if db_run and db_run.status == "failed" and (branch in ("main", "master")):
+            try:
+                await jira_service.create_issue(
+                    repo_name=repo_name,
+                    run_id=run_id,
+                    branch=branch,
+                    error_type=db_run.error_type,
+                    error_message=db_run.error_message,
+                    llm_summary=db_run.llm_summary,
+                    run_url=db_run.run_url,
+                )
+            except Exception as e:
+                logger.error(f"Failed to create Jira ticket for run {run_id}: {e}")
 
     except Exception as e:
         logger.error(f"Error handling task for run {run_id}: {e}", exc_info=True)

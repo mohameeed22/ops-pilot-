@@ -30,6 +30,17 @@ class Settings(BaseSettings):
     # Seed API key for bootstrapping (set in .env on first run)
     SEED_API_KEY: str | None = None
 
+    # JWT Authentication
+    JWT_SECRET: str = "change-me-in-production-please"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+
+    # Ticketing – Jira (optional)
+    JIRA_BASE_URL: str | None = None        # e.g. https://yourcompany.atlassian.net
+    JIRA_EMAIL: str | None = None
+    JIRA_API_TOKEN: str | None = None
+    JIRA_PROJECT_KEY: str | None = None     # e.g. OPS
+
     # SettingsConfigDict defines where the env file is loaded from
     model_config = SettingsConfigDict(
         env_file=".env",

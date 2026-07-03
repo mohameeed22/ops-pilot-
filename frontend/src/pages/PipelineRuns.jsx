@@ -107,7 +107,17 @@ export default function PipelineRuns({ refreshKey }) {
                       {run.branch || '—'}
                     </td>
                     <td style={{ fontSize: '0.8rem' }}>{run.workflow_name || '—'}</td>
-                    <td><StatusBadge status={run.status} /></td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <StatusBadge status={run.status} />
+                        {run.is_flaky && (
+                          <span className="badge flaky">
+                            <span className="badge-dot" />
+                            Flaky
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td style={{ fontSize: '0.8rem', color: 'var(--clr-danger)' }}>
                       {run.error_type || '—'}
                     </td>

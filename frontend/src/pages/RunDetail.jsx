@@ -45,6 +45,12 @@ export default function RunDetail() {
             Run #{run.run_id}
           </h2>
           <StatusBadge status={run.status} />
+          {run.is_flaky && (
+            <span className="badge flaky">
+              <span className="badge-dot" />
+              Flaky
+            </span>
+          )}
         </div>
         <p className="page-subtitle">{run.repo_name}</p>
       </div>

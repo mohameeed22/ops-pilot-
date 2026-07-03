@@ -85,4 +85,30 @@ class GitHubAppService:
                 logger.error(f"Error downloading workflow logs for run {run_id}: {e}")
                 raise
 
+    async def create_pr_comment(self, repo_full_name: str, pr_number: int, installation_id: int, body: str) -> None:
+        """Creates a comment on a GitHub Pull Request."""
+        token = await self.get_installation_access_token(installation_id)
+        url = f"{self.api_url}/repos/{repo_full_name}/issues/{pr_number}/comments"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                logger.info(f"Creating PR comment on {repo_full_name}#{pr_number}")
+                response = await client.post(url, headers=headers, json={"body": body})
+                response.raise_for_status()
+                logger.info(f"Successfully posted PR comment on {repo_full_name}#{pr_number}")
+            except httpx.HTTPStatusError as e:
+                logger.error(
+                    f"HTTP error creating PR comment on {repo_full_name}#{pr_number}: "
+                    f"{e.response.status_code} - {e.response.text}"
+                )
+                raise
+            except Exception as e:
+                logger.error(f"Error creating PR comment on {repo_full_name}#{pr_number}: {e}")
+                raise
+
 github_app_service = GitHubAppService()

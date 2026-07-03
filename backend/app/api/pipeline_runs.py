@@ -9,7 +9,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from app.core.database import async_session
-from app.core.security import require_api_key
+from app.api.auth import get_current_user, User
 from app.models.pipeline import PipelineRun
 
 logger = logging.getLogger("api.runs")
@@ -23,7 +23,7 @@ async def list_runs(
     page_size: int = Query(20, ge=1, le=100),
     status: str | None = Query(None, description="Filter by status (pending, processing, completed, failed)"),
     repo: str | None = Query(None, description="Filter by repository name (partial match)"),
-    _: object = Depends(require_api_key),
+    _: User = Depends(get_current_user),
 ):
     """Returns a paginated list of pipeline runs, newest first."""
     offset = (page - 1) * page_size
@@ -57,10 +57,23 @@ async def list_runs(
     }
 
 
+@router.get("/flaky", summary="Get list of flaky tests")
+async def list_flaky_tests(
+    _: User = Depends(get_current_user),
+):
+    """Returns a list of all identified flaky tests."""
+    from app.models.flaky_test import FlakyTest
+    async with async_session() as db:
+        stmt = select(FlakyTest).order_by(FlakyTest.failure_count.desc())
+        result = await db.execute(stmt)
+        flaky_tests = result.scalars().all()
+    return [t.to_dict() for t in flaky_tests]
+
+
 @router.get("/{run_id}", summary="Get a single pipeline run by GitHub run ID")
 async def get_run(
     run_id: int,
-    _: object = Depends(require_api_key),
+    _: User = Depends(get_current_user),
 ):
     """Returns full detail for a single pipeline run."""
     async with async_session() as db:

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Integer, BigInteger, Text, DateTime
+from sqlalchemy import String, Integer, BigInteger, Text, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
@@ -31,6 +31,9 @@ class PipelineRun(Base):
 
     # LLM-generated incident summary
     llm_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    # Flaky tracking
+    is_flaky: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -54,6 +57,7 @@ class PipelineRun(Base):
             "error_traceback": self.error_traceback,
             "step_log_file": self.step_log_file,
             "llm_summary": self.llm_summary,
+            "is_flaky": self.is_flaky,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

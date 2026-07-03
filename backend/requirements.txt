@@ -14,3 +14,6 @@ greenlet>=3.0.3
 prometheus-fastapi-instrumentator>=6.1.0
 # Retry logic
 tenacity>=8.2.3
+# Password hashing
+passlib[bcrypt]>=1.7.4
+bcrypt==3.2.2

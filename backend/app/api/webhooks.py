@@ -147,13 +147,51 @@ async def github_webhook_handler(
             json.dumps({"conclusion": conclusion, "delivery": x_github_delivery})
         )
 
-        if action == "completed" and conclusion == "failure":
+        if action == "completed" and conclusion == "success":
+            run_id = workflow_run.get("id")
+            logger.info(f"CI SUCCESS DETECTED: Run #{run_id} in {repo_name}. Checking for previous failure (flakiness)...")
+            try:
+                async with async_session() as db:
+                    async with db.begin():
+                        stmt = select(PipelineRun).where(PipelineRun.run_id == run_id)
+                        res = await db.execute(stmt)
+                        db_run = res.scalar_one_or_none()
+                        if db_run:
+                            db_run.is_flaky = True
+                            if db_run.error_filename and db_run.error_type:
+                                sig = f"{db_run.error_filename}:{db_run.error_line_number}:{db_run.error_type}"
+                                from app.models.flaky_test import FlakyTest
+                                stmt_flaky = select(FlakyTest).where(FlakyTest.error_signature == sig)
+                                res_flaky = await db.execute(stmt_flaky)
+                                flaky_record = res_flaky.scalar_one_or_none()
+                                if flaky_record:
+                                    flaky_record.success_count += 1
+                                    flaky_record.is_flaky = True
+                                else:
+                                    flaky_record = FlakyTest(
+                                        repo_name=repo_name,
+                                        workflow_name=db_run.workflow_name or "unknown",
+                                        error_signature=sig,
+                                        failure_count=1,
+                                        success_count=1,
+                                        is_flaky=True
+                                    )
+                                    db.add(flaky_record)
+                            await db.commit()
+                            logger.info(f"Run #{run_id} marked as FLAKY success.")
+            except Exception as e:
+                logger.error(f"Failed to process flaky success for run {run_id}: {e}")
+
+        elif action == "completed" and conclusion == "failure":
             run_id = workflow_run.get("id")
             run_url = workflow_run.get("html_url")
             branch = workflow_run.get("head_branch")
             commit_sha = workflow_run.get("head_sha")
             workflow_name = workflow_run.get("name")
             installation_id = payload.get("installation", {}).get("id")
+            
+            pull_requests = workflow_run.get("pull_requests", [])
+            pr_number = pull_requests[0].get("number") if pull_requests else None
 
             if not installation_id:
                 logger.error("Missing installation ID in webhook payload")
@@ -207,6 +245,7 @@ async def github_webhook_handler(
                     "commit_sha": commit_sha,
                     "run_url": run_url,
                     "workflow_name": workflow_name,
+                    "pr_number": pr_number,
                 }
                 await redis_queue.push_task("devops_pipeline_queue", task_payload)
             except Exception as e:
@@ -231,3 +270,76 @@ async def github_webhook_handler(
     logger.info(f"Event '{x_github_event}' bypassed (no handler).")
     await _write_audit(f"webhook.{x_github_event}.bypassed", "github", repo_name, f"Delivery: {x_github_delivery}")
     return {"status": "bypassed", "event": x_github_event}
+
+
+@router.post("/gitlab", status_code=status.HTTP_202_ACCEPTED)
+async def gitlab_webhook_handler(
+    request: Request,
+    x_gitlab_event: str | None = Header(None, alias="X-Gitlab-Event"),
+    x_gitlab_token: str | None = Header(None, alias="X-Gitlab-Token")
+):
+    """Processes incoming GitLab webhook events."""
+    logger.info(f"Received GitLab webhook event '{x_gitlab_event}'")
+
+    # Simple token verification
+    if settings.GITHUB_WEBHOOK_SECRET and x_gitlab_token != settings.GITHUB_WEBHOOK_SECRET:
+        logger.warning("GitLab webhook token mismatch.")
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    if x_gitlab_event != "Pipeline Hook":
+        return {"status": "ignored", "event": x_gitlab_event}
+
+    obj_attrs = payload.get("object_attributes", {})
+    status_val = obj_attrs.get("status")
+    
+    project = payload.get("project", {})
+    repo_name = project.get("path_with_namespace", "unknown")
+    run_id = obj_attrs.get("id")
+    branch = obj_attrs.get("ref")
+    commit_sha = obj_attrs.get("sha")
+    
+    # Map GitLab to ops-pilot fields
+    if status_val == "failed":
+        logger.error(f"🚨 GitLab CI FAILURE DETECTED: Pipeline #{run_id} in {repo_name}. Queueing log scraper...")
+        
+        # Insert as pending
+        try:
+            async with async_session() as db:
+                async with db.begin():
+                    stmt = select(PipelineRun).where(PipelineRun.run_id == run_id)
+                    res = await db.execute(stmt)
+                    db_run = res.scalar_one_or_none()
+                    if not db_run:
+                        db.add(PipelineRun(
+                            repo_name=repo_name,
+                            run_id=run_id,
+                            status="pending",
+                            branch=branch,
+                            commit_sha=commit_sha,
+                            workflow_name="GitLab Pipeline"
+                        ))
+                    else:
+                        db_run.status = "pending"
+                    await db.commit()
+        except Exception as e:
+            logger.error(f"DB Error: {e}")
+
+        # Queue task
+        task_payload = {
+            "repo_name": repo_name,
+            "run_id": run_id,
+            "branch": branch,
+            "commit_sha": commit_sha,
+            "workflow_name": "GitLab Pipeline",
+            "provider": "gitlab",
+            "project_id": project.get("id")
+        }
+        await redis_queue.push_task("devops_pipeline_queue", task_payload)
+        return {"status": "queued", "message": "GitLab failure queued"}
+
+    return {"status": "ignored", "state": status_val}

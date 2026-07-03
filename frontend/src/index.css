@@ -380,6 +380,8 @@ body::before {
 .badge.failed     .badge-dot { background: var(--clr-danger);   box-shadow: 0 0 6px var(--clr-danger); }
 .badge.pending    .badge-dot { background: var(--clr-warning);  }
 .badge.processing .badge-dot { background: var(--clr-info); animation: pulse-dot 1.5s infinite; }
+.badge.flaky      { background: rgba(168,85,247,0.1); color: rgb(168,85,247); border: 1px solid rgba(168,85,247,0.2); }
+.badge.flaky      .badge-dot { background: rgb(168,85,247); box-shadow: 0 0 6px rgb(168,85,247); }
 
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }

@@ -16,27 +16,32 @@ from app.services.queue import redis_queue
 import app.models.pipeline          # noqa: F401
 import app.models.audit_event       # noqa: F401
 import app.models.api_key           # noqa: F401
+import app.models.flaky_test        # noqa: F401
+import app.models.user              # noqa: F401
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main")
 
 
-async def _seed_api_key() -> None:
-    """If SEED_API_KEY is set and not yet in the DB, insert it on startup."""
+async def _seed_admin_user() -> None:
+    """If SEED_API_KEY is set, create a default admin user."""
     if not settings.SEED_API_KEY:
         return
-    from app.models.api_key import ApiKey
+    from app.models.user import User
     from sqlalchemy.future import select
 
-    key_hash = hashlib.sha256(settings.SEED_API_KEY.encode()).hexdigest()
     async with async_session() as db:
         async with db.begin():
-            from sqlalchemy.future import select
-            result = await db.execute(select(ApiKey).where(ApiKey.key_hash == key_hash))
+            result = await db.execute(select(User).where(User.email == "admin@opspilot.com"))
             existing = result.scalar_one_or_none()
             if not existing:
-                db.add(ApiKey(name="seed-key", key_hash=key_hash, is_active=True))
-                logger.info("Seeded default API key into the database.")
+                db.add(User(
+                    email="admin@opspilot.com",
+                    hashed_password=User.hash_password(settings.SEED_API_KEY),
+                    full_name="System Administrator",
+                    role="admin"
+                ))
+                logger.info("Seeded default admin user (admin@opspilot.com) using SEED_API_KEY as password.")
 
 
 @asynccontextmanager
@@ -44,7 +49,7 @@ async def lifespan(app: FastAPI):
     # Startup: Create tables if they don't exist
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    await _seed_api_key()
+    await _seed_admin_user()
     yield
     # Shutdown: Close Redis connection
     await redis_queue.close()
@@ -109,6 +114,8 @@ async def readiness_check():
 
 
 # ── API Routers ───────────────────────────────────────────────────────────────
+from app.api.auth import router as auth_router
+app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(webhooks_router, prefix=settings.API_V1_STR)
 app.include_router(runs_router, prefix=settings.API_V1_STR)
 app.include_router(stats_router, prefix=settings.API_V1_STR)

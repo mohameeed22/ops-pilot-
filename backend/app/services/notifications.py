@@ -1,6 +1,7 @@
 import logging
 import httpx
 from app.core.config import settings
+from app.services.github_app import github_app_service
 
 logger = logging.getLogger("notifications")
 
@@ -152,13 +153,39 @@ class NotificationService:
             except Exception as e:
                 logger.error(f"Failed to send Discord notification: {e}")
 
-    async def notify_all(self, repo_name: str, run_id: int, status: str, error_details: dict | None) -> None:
+    async def send_pr_comment(self, repo_name: str, pr_number: int, installation_id: int, status: str, error_details: dict | None) -> None:
+        if status != "failed" or not error_details:
+            return
+
+        err_type = error_details.get("error_type", "Unknown")
+        msg = error_details.get("error_message", "No message details.")
+        summary = error_details.get("llm_summary", "No AI summary generated.")
+        
+        body = (
+            f"### 🚨 CI Pipeline Failure Detected\n\n"
+            f"**Error Type**: `{err_type}`\n"
+            f"**Details**: {msg}\n\n"
+            f"**🤖 AI Incident Summary & Suggested Fix**:\n"
+            f"{summary}\n\n"
+            f"---\n"
+            f"*Generated automatically by Ops-Pilot*"
+        )
+        
+        try:
+            await github_app_service.create_pr_comment(repo_name, pr_number, installation_id, body)
+        except Exception as e:
+            logger.error(f"Failed to send PR comment: {e}")
+
+    async def notify_all(self, repo_name: str, run_id: int, status: str, error_details: dict | None, installation_id: int | None = None, pr_number: int | None = None) -> None:
         import asyncio
-        await asyncio.gather(
+        tasks = [
             self.send_slack_notification(repo_name, run_id, status, error_details),
             self.send_discord_notification(repo_name, run_id, status, error_details),
-            return_exceptions=True,
-        )
+        ]
+        if installation_id and pr_number:
+            tasks.append(self.send_pr_comment(repo_name, pr_number, installation_id, status, error_details))
+            
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 notifier = NotificationService()

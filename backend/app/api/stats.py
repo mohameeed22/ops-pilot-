@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select, case
 from app.core.database import async_session
-from app.core.security import require_api_key
+from app.api.auth import get_current_user, User
 from app.models.pipeline import PipelineRun
 
 logger = logging.getLogger("api.stats")
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/stats", tags=["Stats"])
 
 
 @router.get("", summary="Get aggregate pipeline statistics")
-async def get_stats(_: object = Depends(require_api_key)):
+async def get_stats(_: User = Depends(get_current_user)):
     """
     Returns:
     - overall counts by status
