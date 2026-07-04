@@ -9,6 +9,9 @@ import PipelineRuns from './pages/PipelineRuns';
 import RunDetail    from './pages/RunDetail';
 import AuditLog     from './pages/AuditLog';
 import Health       from './pages/Health';
+import SLADashboard from './pages/SLADashboard';
+import Deployments  from './pages/Deployments';
+import NotificationRules from './pages/NotificationRules';
 
 export default function App() {
   const [refreshKey, setRefreshKey]     = useState(0);
@@ -48,11 +51,14 @@ export default function App() {
       <div className="main-content">
         <TopBar onRefresh={handleRefresh} isRefreshing={isRefreshing} />
         <Routes>
-          <Route path="/"          element={<Dashboard    refreshKey={refreshKey} />} />
-          <Route path="/runs"      element={<PipelineRuns refreshKey={refreshKey} />} />
-          <Route path="/runs/:runId" element={<RunDetail />} />
-          <Route path="/audit"     element={<AuditLog    refreshKey={refreshKey} />} />
-          <Route path="/health"    element={<Health      refreshKey={refreshKey} />} />
+          <Route path="/"             element={<Dashboard          refreshKey={refreshKey} />} />
+          <Route path="/runs"         element={<PipelineRuns       refreshKey={refreshKey} />} />
+          <Route path="/runs/:runId"  element={<RunDetail          refreshKey={refreshKey} />} />
+          <Route path="/audit"        element={<AuditLog           refreshKey={refreshKey} />} />
+          <Route path="/health"       element={<Health             refreshKey={refreshKey} />} />
+          <Route path="/sla"          element={<SLADashboard       refreshKey={refreshKey} />} />
+          <Route path="/deployments"  element={<Deployments        refreshKey={refreshKey} />} />
+          <Route path="/notif-rules"  element={<NotificationRules  refreshKey={refreshKey} />} />
         </Routes>
       </div>
     </div>

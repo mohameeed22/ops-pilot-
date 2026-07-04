@@ -16,6 +16,7 @@ export default function PipelineRuns({ refreshKey }) {
   const [page, setPage]       = useState(1);
   const [search, setSearch]   = useState('');
   const [status, setStatus]   = useState('');
+  const [provider, setProvider] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -24,6 +25,7 @@ export default function PipelineRuns({ refreshKey }) {
       const params = { page, page_size: 20 };
       if (search) params.repo   = search;
       if (status) params.status = status;
+      if (provider) params.provider = provider;
       const result = await fetchRuns(params);
       setData(result);
     } catch (err) {
@@ -31,7 +33,7 @@ export default function PipelineRuns({ refreshKey }) {
     } finally {
       setLoading(false);
     }
-  }, [page, search, status, refreshKey]);
+  }, [page, search, status, provider, refreshKey]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -39,10 +41,10 @@ export default function PipelineRuns({ refreshKey }) {
     <div className="page-container">
       <div className="page-header">
         <h2 className="page-title">Pipeline Runs</h2>
-        <p className="page-subtitle">All CI/CD pipeline executions triggered by GitHub events</p>
+        <p className="page-subtitle">All CI/CD pipeline executions across providers</p>
       </div>
 
-      {error && <div className="error-box">⚠ {error}</div>}
+      {error && <div className="error-box">{error}</div>}
 
       <div className="input-group">
         <input
@@ -64,6 +66,16 @@ export default function PipelineRuns({ refreshKey }) {
           <option value="completed">Completed</option>
           <option value="failed">Failed</option>
         </select>
+        <select
+          className="select-input"
+          value={provider}
+          onChange={e => { setProvider(e.target.value); setPage(1); }}
+        >
+          <option value="">All Providers</option>
+          <option value="github">GitHub</option>
+          <option value="gitlab">GitLab</option>
+          <option value="bitbucket">Bitbucket</option>
+        </select>
       </div>
 
       {loading ? (
@@ -78,6 +90,7 @@ export default function PipelineRuns({ refreshKey }) {
                   <th>Run ID</th>
                   <th>Branch</th>
                   <th>Workflow</th>
+                  <th>Provider</th>
                   <th>Status</th>
                   <th>Error Type</th>
                   <th>Date</th>
@@ -87,7 +100,7 @@ export default function PipelineRuns({ refreshKey }) {
               <tbody>
                 {data?.items?.length === 0 && (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <div className="empty-state">
                         <div className="empty-icon">🔍</div>
                         <div className="empty-text">No pipeline runs found</div>
@@ -107,6 +120,16 @@ export default function PipelineRuns({ refreshKey }) {
                       {run.branch || '—'}
                     </td>
                     <td style={{ fontSize: '0.8rem' }}>{run.workflow_name || '—'}</td>
+                    <td>
+                      <span className="badge" style={{
+                        background: run.provider === 'gitlab' ? 'var(--clr-warning-bg)' : run.provider === 'bitbucket' ? 'var(--clr-info-bg)' : 'var(--clr-accent-dim)',
+                        color: run.provider === 'gitlab' ? 'var(--clr-warning)' : run.provider === 'bitbucket' ? 'var(--clr-info)' : 'var(--clr-accent)',
+                        border: 'none',
+                        fontSize: '0.65rem',
+                      }}>
+                        {run.provider || 'github'}
+                      </span>
+                    </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <StatusBadge status={run.status} />
@@ -135,11 +158,10 @@ export default function PipelineRuns({ refreshKey }) {
             </table>
           </div>
 
-          {/* Pagination */}
           {data && data.total_pages > 1 && (
             <div className="pagination">
               <button className="page-btn" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
-                ← Prev
+                Prev
               </button>
               {Array.from({ length: data.total_pages }, (_, i) => i + 1)
                 .filter(p => Math.abs(p - page) <= 2)
@@ -153,7 +175,7 @@ export default function PipelineRuns({ refreshKey }) {
                   </button>
                 ))}
               <button className="page-btn" disabled={page >= data.total_pages} onClick={() => setPage(p => p + 1)}>
-                Next →
+                Next
               </button>
             </div>
           )}

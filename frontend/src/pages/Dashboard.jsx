@@ -4,14 +4,16 @@ import {
   BarChart, Bar,
 } from 'recharts';
 import { fetchStats } from '../api';
-import { GitBranch, CheckCircle, XCircle, Clock, Loader } from 'lucide-react';
+import { GitBranch, CheckCircle, XCircle, Clock, Loader, AlertTriangle } from 'lucide-react';
 
 const statCards = [
-  { key: 'total',      label: 'Total Runs',  icon: GitBranch,   cls: 'total'      },
-  { key: 'completed',  label: 'Completed',   icon: CheckCircle, cls: 'completed'  },
-  { key: 'failed',     label: 'Failed',      icon: XCircle,     cls: 'failed'     },
-  { key: 'pending',    label: 'Pending',     icon: Clock,       cls: 'pending'    },
-  { key: 'processing', label: 'Processing',  icon: Loader,      cls: 'processing' },
+  { key: 'total',      label: 'Total Runs',    icon: GitBranch,   cls: 'total'      },
+  { key: 'completed',  label: 'Completed',     icon: CheckCircle, cls: 'completed'  },
+  { key: 'failed',     label: 'Failed',        icon: XCircle,     cls: 'failed'     },
+  { key: 'pending',    label: 'Pending',       icon: Clock,       cls: 'pending'    },
+  { key: 'processing', label: 'Processing',    icon: Loader,      cls: 'processing' },
+  { key: 'flaky_count', label: 'Flaky Tests',  icon: AlertTriangle, cls: ''         },
+  { key: 'avg_mttr_minutes', label: 'Avg MTTR', icon: Clock,      cls: ''           },
 ];
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -72,14 +74,20 @@ export default function Dashboard({ refreshKey }) {
 
       {/* Stat Cards */}
       <div className="stats-grid">
-        {statCards.map(({ key, label, icon: Icon, cls }) => (
-          <div key={key} className={`stat-card ${cls}`}>
+          {statCards.map(({ key, label, icon: Icon, cls }) => (
+          <div key={key} className={`stat-card ${cls}`} style={cls === '' ? { borderTop: '3px solid ' + (key === 'flaky_count' ? '#a78bfa' : '#63d3ff') } : {}}>
             <div className="stat-label">
               <Icon size={14} />
               {label}
             </div>
-            <div className="stat-value">{stats?.counts?.[key] ?? 0}</div>
-            <div className="stat-sub">all time</div>
+            <div className="stat-value" style={cls === '' ? { color: key === 'flaky_count' ? '#a78bfa' : '#63d3ff' } : {}}>
+              {key === 'avg_mttr_minutes'
+                ? (stats?.avg_mttr_minutes ?? '—')
+                : key === 'flaky_count'
+                  ? (stats?.flaky_count ?? 0)
+                  : (stats?.counts?.[key] ?? 0)}
+            </div>
+            <div className="stat-sub">{key === 'avg_mttr_minutes' ? 'minutes to recovery' : 'all time'}</div>
           </div>
         ))}
       </div>

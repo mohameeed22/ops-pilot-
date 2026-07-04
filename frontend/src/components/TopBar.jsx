@@ -3,10 +3,13 @@ import { useLocation } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 
 const titles = {
-  '/':       'Dashboard',
-  '/runs':   'Pipeline Runs',
-  '/audit':  'Audit Log',
-  '/health': 'System Health',
+  '/':             'Dashboard',
+  '/runs':         'Pipeline Runs',
+  '/audit':        'Audit Log',
+  '/health':       'System Health',
+  '/sla':          'SLA / MTTR',
+  '/deployments':  'Deployments',
+  '/notif-rules':  'Notification Rules',
 };
 
 export default function TopBar({ onRefresh, isRefreshing }) {
