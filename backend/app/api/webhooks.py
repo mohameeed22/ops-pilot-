@@ -272,6 +272,63 @@ async def github_webhook_handler(
     return {"status": "bypassed", "event": x_github_event}
 
 
+@router.post("/bitbucket", status_code=status.HTTP_202_ACCEPTED)
+async def bitbucket_webhook_handler(
+    request: Request,
+    x_event_key: str | None = Header(None, alias="X-Event-Key"),
+):
+    """Processes incoming Bitbucket webhook events."""
+    logger.info(f"Received Bitbucket webhook event '{x_event_key}'")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    if x_event_key not in ("repo:commit_status_created", "repo:commit_status_updated"):
+        return {"status": "ignored", "event": x_event_key}
+
+    commit_status = payload.get("commit_status", {})
+    state = commit_status.get("state")
+    repo_full = payload.get("repository", {}).get("full_name", "unknown")
+    run_id = commit_status.get("key", 0)
+    branch = commit_status.get("refname", "").replace("refs/heads/", "") if commit_status.get("refname") else None
+    commit_sha = commit_status.get("commit", {}).get("hash")
+    url = commit_status.get("url")
+    name = commit_status.get("name")
+
+    if state == "FAILED":
+        logger.error(f"Bitbucket CI FAILURE: {repo_full}")
+
+        try:
+            async with async_session() as db:
+                async with db.begin():
+                    stmt = select(PipelineRun).where(PipelineRun.run_id == run_id)
+                    res = await db.execute(stmt)
+                    db_run = res.scalar_one_or_none()
+                    if not db_run:
+                        db.add(PipelineRun(
+                            repo_name=repo_full,
+                            run_id=run_id,
+                            installation_id=0,
+                            status="pending",
+                            branch=branch,
+                            commit_sha=commit_sha,
+                            run_url=url,
+                            workflow_name=name or "Bitbucket Pipeline",
+                            provider="bitbucket",
+                        ))
+                    else:
+                        db_run.status = "pending"
+                    await db.commit()
+        except Exception as e:
+            logger.error(f"DB Error: {e}")
+
+        return {"status": "queued", "message": "Bitbucket failure queued"}
+
+    return {"status": "ignored", "state": state}
+
+
 @router.post("/gitlab", status_code=status.HTTP_202_ACCEPTED)
 async def gitlab_webhook_handler(
     request: Request,

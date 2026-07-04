@@ -19,6 +19,22 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gpt-4o-mini"
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
 
+    # Email (SendGrid / SMTP)
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_FROM: str | None = None
+    SENDGRID_API_KEY: str | None = None
+    NOTIFICATION_EMAIL_TO: str | None = None
+
+    # PagerDuty
+    PAGERDUTY_ROUTING_KEY: str | None = None
+    PAGERDUTY_API_URL: str = "https://events.pagerduty.com/v2/enqueue"
+
+    # Microsoft Teams
+    TEAMS_WEBHOOK_URL: str | None = None
+
     # Data stores
     REDIS_URL: str = "redis://redis:6379/0"
     DATABASE_URL: str = "postgresql+asyncpg://postgres:devops_password@db:5432/devops_autopilot"
@@ -35,12 +51,18 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
 
     # Ticketing – Jira (optional)
-    JIRA_BASE_URL: str | None = None        # e.g. https://yourcompany.atlassian.net
+    JIRA_BASE_URL: str | None = None
     JIRA_EMAIL: str | None = None
     JIRA_API_TOKEN: str | None = None
-    JIRA_PROJECT_KEY: str | None = None     # e.g. OPS
+    JIRA_PROJECT_KEY: str | None = None
 
-    # SettingsConfigDict defines where the env file is loaded from
+    # Auto-remediation
+    AUTO_RERUN_FLAKY: bool = False
+    MAX_RERUNS_PER_RUN: int = 3
+
+    # Bitbucket
+    BITBUCKET_WEBHOOK_SECRET: str | None = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -49,16 +71,10 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> List[str]:
-        """Returns CORS_ORIGINS as a parsed list."""
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
     @property
     def formatted_private_key(self) -> str:
-        """Returns the private key with properly formatted newlines.
-
-        Handles cases where GITHUB_PRIVATE_KEY is written on a single line
-        with literal '\\n' characters in environment configurations.
-        """
         return self.GITHUB_PRIVATE_KEY.replace("\\n", "\n")
 
 

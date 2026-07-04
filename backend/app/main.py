@@ -9,22 +9,27 @@ from app.api.pipeline_runs import router as runs_router
 from app.api.stats import router as stats_router
 from app.api.audit import router as audit_router
 from app.api.auth import router as auth_router
+from app.api.notification_rules import router as notif_rules_router
+from app.api.deployments import router as deployments_router
+from app.api.rerun import router as rerun_router
+from app.api.sla import router as sla_router
 from app.core.database import Base, engine, async_session
 from app.services.queue import redis_queue
 
-# Import models so they are registered on Base.metadata
-import app.models.pipeline          # noqa: F401
-import app.models.audit_event       # noqa: F401
-import app.models.api_key           # noqa: F401
-import app.models.flaky_test        # noqa: F401
-import app.models.user              # noqa: F401
+import app.models.pipeline
+import app.models.audit_event
+import app.models.api_key
+import app.models.flaky_test
+import app.models.user
+import app.models.notification_rule
+import app.models.deployment
+import app.models.sla_report
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main")
 
 
 async def _seed_admin_user() -> None:
-    """If SEED_API_KEY is set, create a default admin user."""
     if not settings.SEED_API_KEY:
         return
     from app.models.user import User
@@ -46,12 +51,10 @@ async def _seed_admin_user() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Create tables if they don't exist
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await _seed_admin_user()
     yield
-    # Shutdown: Close Redis connection
     await redis_queue.close()
 
 
@@ -63,7 +66,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS ─────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -72,14 +74,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Prometheus metrics ────────────────────────────────────────────────────────
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 
-# ── Health & Readiness ────────────────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Simple service health validation endpoint."""
     return {
         "status": "healthy",
         "project": settings.PROJECT_NAME,
@@ -89,33 +88,29 @@ async def health_check():
 
 @app.get("/ready", tags=["Health"])
 async def readiness_check():
-    """Readiness probe – checks DB and Redis connectivity."""
     errors: list[str] = []
-
-    # Check DB
     try:
         async with async_session() as db:
             await db.execute(__import__("sqlalchemy").text("SELECT 1"))
     except Exception as exc:
         errors.append(f"database: {exc}")
-
-    # Check Redis
     try:
         redis_client = await redis_queue.get_redis()
         await redis_client.ping()
     except Exception as exc:
         errors.append(f"redis: {exc}")
-
     if errors:
         from fastapi import HTTPException
         raise HTTPException(status_code=503, detail={"status": "not ready", "errors": errors})
-
     return {"status": "ready"}
 
 
-# ── API Routers ───────────────────────────────────────────────────────────────
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(webhooks_router, prefix=settings.API_V1_STR)
 app.include_router(runs_router, prefix=settings.API_V1_STR)
 app.include_router(stats_router, prefix=settings.API_V1_STR)
 app.include_router(audit_router, prefix=settings.API_V1_STR)
+app.include_router(notif_rules_router, prefix=settings.API_V1_STR)
+app.include_router(deployments_router, prefix=settings.API_V1_STR)
+app.include_router(rerun_router, prefix=settings.API_V1_STR)
+app.include_router(sla_router, prefix=settings.API_V1_STR)

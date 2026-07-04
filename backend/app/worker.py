@@ -2,6 +2,7 @@ import asyncio
 import logging
 import signal
 import sys
+from datetime import datetime
 from sqlalchemy.future import select
 from app.core.database import async_session
 from app.models.pipeline import PipelineRun
@@ -158,9 +159,17 @@ async def process_task(payload: dict):
             f"repo={repo_name}"
         )
 
+        # MTTR calculation
+        if db_run and db_run.status == "completed" and db_run.created_at:
+            now = datetime.utcnow()
+            diff_min = (now - db_run.created_at).total_seconds() / 60.0
+            db_run.mttr_minutes = round(diff_min, 1)
+
+        await db.commit()
+
         # Send notifications
         try:
-            await notifier.notify_all(repo_name, run_id, db_run.status if db_run else "unknown", error_details, installation_id, pr_number)
+            await notifier.notify_all(repo_name, run_id, db_run.status if db_run else "unknown", error_details, installation_id, pr_number, branch)
         except Exception as e:
             logger.error(f"Failed to send external notifications for run {run_id}: {e}")
 

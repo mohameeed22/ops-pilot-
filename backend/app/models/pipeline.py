@@ -14,13 +14,16 @@ class PipelineRun(Base):
     installation_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False, index=True)
 
+    # Provider (github / gitlab / bitbucket)
+    provider: Mapped[str] = mapped_column(String(50), default="github", nullable=False)
+
     # GitHub context
     branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
     commit_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
     run_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     workflow_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    # Parsed error fields (nullable in case of success or unparseable logs)
+    # Parsed error fields
     error_language: Mapped[str | None] = mapped_column(String(50), nullable=True)
     error_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
     error_line_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -31,9 +34,17 @@ class PipelineRun(Base):
 
     # LLM-generated incident summary
     llm_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    
+
     # Flaky tracking
     is_flaky: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Auto-remediation
+    rerun_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_rerun_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    auto_rerun: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # MTTR
+    mttr_minutes: Mapped[float | None] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -45,6 +56,7 @@ class PipelineRun(Base):
             "run_id": self.run_id,
             "installation_id": self.installation_id,
             "status": self.status,
+            "provider": self.provider,
             "branch": self.branch,
             "commit_sha": self.commit_sha,
             "run_url": self.run_url,
@@ -58,7 +70,10 @@ class PipelineRun(Base):
             "step_log_file": self.step_log_file,
             "llm_summary": self.llm_summary,
             "is_flaky": self.is_flaky,
+            "rerun_count": self.rerun_count,
+            "last_rerun_at": self.last_rerun_at.isoformat() if self.last_rerun_at else None,
+            "auto_rerun": self.auto_rerun,
+            "mttr_minutes": self.mttr_minutes,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
-

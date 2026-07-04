@@ -1,6 +1,3 @@
-"""
-Stats API – aggregate counts and recent trend for the dashboard.
-"""
 import logging
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
@@ -16,14 +13,7 @@ router = APIRouter(prefix="/stats", tags=["Stats"])
 
 @router.get("", summary="Get aggregate pipeline statistics")
 async def get_stats(_: User = Depends(get_current_user)):
-    """
-    Returns:
-    - overall counts by status
-    - counts for the last 7 days (trend data for the chart)
-    - top failing repositories
-    """
     async with async_session() as db:
-        # --- Overall counts by status ---
         count_result = await db.execute(
             select(PipelineRun.status, func.count(PipelineRun.id).label("count"))
             .group_by(PipelineRun.status)
@@ -39,7 +29,6 @@ async def get_stats(_: User = Depends(get_current_user)):
             "failed": status_counts.get("failed", 0),
         }
 
-        # --- Daily trend for the last 7 days ---
         seven_days_ago = datetime.utcnow() - timedelta(days=7)
         trend_result = await db.execute(
             select(
@@ -53,7 +42,6 @@ async def get_stats(_: User = Depends(get_current_user)):
         )
         trend_rows = trend_result.all()
 
-        # Build a day-keyed dict for the chart
         trend_map: dict[str, dict] = {}
         for row in trend_rows:
             day_str = str(row.day)
@@ -64,7 +52,6 @@ async def get_stats(_: User = Depends(get_current_user)):
 
         trend = list(trend_map.values())
 
-        # --- Top 5 failing repositories ---
         top_repos_result = await db.execute(
             select(PipelineRun.repo_name, func.count(PipelineRun.id).label("failures"))
             .where(PipelineRun.status == "failed")
@@ -77,8 +64,21 @@ async def get_stats(_: User = Depends(get_current_user)):
             for row in top_repos_result
         ]
 
+        flaky_count = (
+            await db.execute(
+                select(func.count(PipelineRun.id)).where(PipelineRun.is_flaky.is_(True))
+            )
+        ).scalar_one()
+
+        mttr_result = await db.execute(
+            select(func.avg(PipelineRun.mttr_minutes)).where(PipelineRun.mttr_minutes.isnot(None))
+        )
+        avg_mttr = round(mttr_result.scalar_one() or 0, 1)
+
     return {
         "counts": counts,
         "trend": trend,
         "top_failing_repos": top_failing_repos,
+        "flaky_count": flaky_count,
+        "avg_mttr_minutes": avg_mttr,
     }

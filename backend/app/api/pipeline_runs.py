@@ -23,9 +23,9 @@ async def list_runs(
     page_size: int = Query(20, ge=1, le=100),
     status: str | None = Query(None, description="Filter by status (pending, processing, completed, failed)"),
     repo: str | None = Query(None, description="Filter by repository name (partial match)"),
+    provider: str | None = Query(None, description="Filter by provider (github, gitlab, bitbucket)"),
     _: User = Depends(get_current_user),
 ):
-    """Returns a paginated list of pipeline runs, newest first."""
     offset = (page - 1) * page_size
 
     async with async_session() as db:
@@ -39,6 +39,9 @@ async def list_runs(
             like_expr = f"%{repo}%"
             query = query.where(PipelineRun.repo_name.ilike(like_expr))
             count_query = count_query.where(PipelineRun.repo_name.ilike(like_expr))
+        if provider:
+            query = query.where(PipelineRun.provider == provider)
+            count_query = count_query.where(PipelineRun.provider == provider)
 
         query = query.order_by(PipelineRun.created_at.desc()).offset(offset).limit(page_size)
 
